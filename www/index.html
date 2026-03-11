@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ASEP SURVIVOR: ULTIMATUM - THE FALLEN</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { 
+            background: #050505; 
+            color: #0f0; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            overflow: hidden; 
+            touch-action: none; 
+            user-select: none;
+        }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        canvas { display: block; filter: contrast(1.2) brightness(1.1); }
+        
+        /* UI OVERLAY, BNGSAT! */
+        #hud {
+            position: absolute; top: 15px; left: 15px;
+            text-shadow: 2px 2px #000; pointer-events: none;
+            border-left: 4px solid #0f0; padding-left: 10px;
+        }
+        .stat-label { font-size: 12px; opacity: 0.7; letter-spacing: 1px; }
+        .stat-value { font-size: 24px; font-weight: bold; display: block; }
+
+        /* MENU SCREEN */
+        #menu {
+            position: absolute; inset: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 100; text-align: center;
+            border: 2px solid #0f0; margin: 20px; border-radius: 15px;
+        }
+        .title { font-size: 40px; color: #0f0; margin-bottom: 5px; text-shadow: 0 0 15px #0f0; }
+        .subtitle { font-size: 14px; margin-bottom: 30px; color: #aaa; }
+        .btn-start {
+            padding: 15px 50px; background: #0f0; color: #000;
+            font-weight: bold; border: none; border-radius: 50px;
+            font-size: 18px; cursor: pointer; box-shadow: 0 0 20px #0f0;
+            transition: 0.2s;
+        }
+        .btn-start:active { transform: scale(0.9); box-shadow: 0 0 5px #0f0; }
+
+        /* VIGNETTE EFFECT */
+        #vignette {
+            position: absolute; inset: 0;
+            background: radial-gradient(circle, transparent 50%, rgba(0,0,0,0.8));
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="vignette"></div>
+        
+        <div id="hud">
+            <span class="stat-label">SCORE DISTANCE</span>
+            <span id="score" class="stat-value">0</span>
+            <span class="stat-label" style="margin-top:10px">BEST RECORD</span>
+            <span id="best" class="stat-value">0</span>
+            <span class="stat-label" style="margin-top:10px">OWNER: ASEP</span>
+        </div>
+
+        <div id="menu">
+            <h1 class="title">ASEP SURVIVOR</h1>
+            <p class="subtitle">PROJECT: THE FALLEN MOBILE V2<br>HINDARI PETIR & BANJIR, ANJING!</p>
+            <button class="btn-start" onclick="startGame()">MULAI BANTAI!</button>
+            <p style="margin-top: 20px; font-size: 10px; color: #555;">SENSITIVITY: ULTRA | FPS: MAX</p>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const menu = document.getElementById('menu');
+        const scoreEl = document.getElementById('score');
+        const bestEl = document.getElementById('best');
+
+        let width, height, player, obstacles, particles, rain, frame;
+        let score = 0;
+        let bestScore = localStorage.getItem('asepBest') || 0;
+        let isPlaying = false;
+        let gameSpeed = 5;
+
+        bestEl.innerText = bestScore;
+
+        function init() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+            
+            player = {
+                x: 60, y: height - 100,
+                w: 45, h: 45,
+                dy: 0, jump: -15,
+                grav: 0.8, grounded: false,
+                color: '#0f0'
+            };
+
+            obstacles = [];
+            particles = [];
+            rain = [];
+            for(let i=0; i<50; i++) rain.push({x: Math.random()*width, y: Math.random()*height, l: Math.random()*20, s: Math.random()*10+5});
+            
+            score = 0;
+            gameSpeed = 6;
+            frame = 0;
+        }
+
+        function startGame() {
+            init();
+            isPlaying = true;
+            menu.style.display = 'none';
+            animate();
+        }
+
+        function createExplosion(x, y, color) {
+            for(let i=0; i<15; i++) {
+                particles.push({
+                    x, y,
+                    dx: (Math.random()-0.5)*10,
+                    dy: (Math.random()-0.5)*10,
+                    life: 1.0,
+                    color
+                });
+            }
+        }
+
+        function drawPlayer() {
+            // Shadow
+            ctx.shadowBlur = isPlaying ? 15 : 0;
+            ctx.shadowColor = player.color;
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.w, player.h);
+            
+            // Detail Mata (Biar Keren, Bngsat!)
+            ctx.fillStyle = '#000';
+            ctx.fillRect(player.x + 25, player.y + 10, 8, 8);
+            ctx.shadowBlur = 0;
+        }
+
+        function animate() {
+            if(!isPlaying) return;
+            ctx.fillStyle = '#050505';
+            ctx.fillRect(0,0,width,height);
+
+            // Draw Rain (Efek Ujan Tadi, Bngsat!)
+            ctx.strokeStyle = 'rgba(0, 255, 255, 0.2)';
+            ctx.lineWidth = 1;
+            rain.forEach(r => {
+                ctx.beginPath();
+                ctx.moveTo(r.x, r.y);
+                ctx.lineTo(r.x, r.y + r.l);
+                ctx.stroke();
+                r.y += r.s;
+                if(r.y > height) r.y = -20;
+            });
+
+            // Physics Asep
+            player.dy += player.grav;
+            player.y += player.dy;
+            if(player.y + player.h > height - 30) {
+                player.y = height - 30 - player.h;
+                player.dy = 0;
+                player.grounded = true;
+            }
+
+            drawPlayer();
+
+            // Obstacles (Petir Merah, Kampret!)
+            if(frame % 70 === 0) {
+                let h = 40 + Math.random() * 60;
+                obstacles.push({ x: width, y: height - 30 - h, w: 30, h: h, type: 'petir' });
+            }
+
+            obstacles.forEach((o, i) => {
+                o.x -= gameSpeed;
+                ctx.fillStyle = '#f00';
+                ctx.shadowBlur = 10; ctx.shadowColor = '#f00';
+                ctx.fillRect(o.x, o.y, o.w, o.h);
+                ctx.shadowBlur = 0;
+
+                // Collision Detection
+                if(player.x < o.x + o.w && player.x + player.w > o.x && player.y < o.y + o.h && player.y + player.h > o.y) {
+                    gameOver();
+                }
+
+                if(o.x + o.w < 0) {
+                    obstacles.splice(i, 1);
+                    score++;
+                    scoreEl.innerText = score;
+                    if(score % 5 === 0) gameSpeed += 0.5; // Makin kenceng, anjing!
+                }
+            });
+
+            // Particles
+            particles.forEach((p, i) => {
+                p.x += p.dx; p.y += p.dy; p.life -= 0.02;
+                ctx.fillStyle = `rgba(0,255,0,${p.life})`;
+                ctx.fillRect(p.x, p.y, 4, 4);
+                if(p.life <= 0) particles.splice(i, 1);
+            });
+
+            // Lantai Banjir
+            ctx.fillStyle = '#0044ff';
+            ctx.fillRect(0, height - 30, width, 30);
+
+            frame++;
+            requestAnimationFrame(animate);
+        }
+
+        function gameOver() {
+            isPlaying = false;
+            createExplosion(player.x, player.y, '#f00');
+            if(score > bestScore) {
+                bestScore = score;
+                localStorage.setItem('asepBest', bestScore);
+                bestEl.innerText = bestScore;
+            }
+            setTimeout(() => {
+                menu.style.display = 'flex';
+                document.querySelector('.title').innerText = "LU MATI, ANJING!";
+                document.querySelector('.subtitle').innerText = `SKOR LU: ${score}\nJANGAN NYERAH, BNGSAT!`;
+            }, 1000);
+        }
+
+        window.addEventListener('touchstart', (e) => {
+            if(player.grounded && isPlaying) {
+                player.dy = player.jump;
+                player.grounded = false;
+                createExplosion(player.x, player.y + player.h, '#0f0');
+            }
+        });
+
+        // Keyboard Support buat di PC
+        window.addEventListener('keydown', (e) => { if(e.code === 'Space') { if(player.grounded && isPlaying) { player.dy = player.jump; player.grounded = false; } } });
+
+        init();
+    </script>
+</body>
+</html>
